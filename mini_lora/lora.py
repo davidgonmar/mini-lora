@@ -16,7 +16,6 @@ class LoRALinear(LoRAModule):
         d, k = module.weight.shape
         super().__init__(d, r, k, alpha)
         self.W0 = module.weight
-        self.W0.requires_grad_(False)  # freeze the original weights
         self.bias = module.bias
 
     def forward(self, x: torch.Tensor):
@@ -24,25 +23,17 @@ class LoRALinear(LoRAModule):
         return nn.functional.linear(x, W, self.bias)
 
 
-def _lorafy(model: nn.Module, r: int = 2, alpha: float = 1.0):
-    total_params_lorafied = 0
-    total_modules_lorafied = 0
+def _lorafy(model: nn.Module, r: int = 2, alpha: float = 1.0, should_lorafy=lambda mod, name: True, should_freeze=lambda x, name: False):
     for name, module in model.named_children():
-        if isinstance(module, nn.Linear):
+        if isinstance(module, nn.Linear) and should_lorafy(module, name):
             setattr(model, name, LoRALinear(module, r, alpha))
-            total_params_lorafied += module.weight.numel()
-            total_modules_lorafied += 1
         else:
-            _total_params_lorafied, _total_modules_lorafied = _lorafy(module, r, alpha)
-            total_params_lorafied += _total_params_lorafied
-            total_modules_lorafied += _total_modules_lorafied
-
-    return total_params_lorafied, total_modules_lorafied
+            _lorafy(module, r, alpha)
 
 
-def lorafy(model: nn.Module, r: int = 2, alpha: float = 1.0):
-    total_params_lorafied, total_modules_lorafied = _lorafy(model, r, alpha)
-    print(
-        f"LoRAfied {total_modules_lorafied} modules with a total of {total_params_lorafied} weight parameters"
-    )
+def lorafy(model: nn.Module, r: int = 2, alpha: float = 1.0, should_lorafy=lambda x: True, should_freeze=lambda x, name: False):
+    for name, module in model.named_parameters():
+        if should_freeze(module, name):
+            module.requires_grad = False
+    _lorafy(model, r, alpha, should_lorafy)
     return model
