@@ -5,7 +5,17 @@ from transformers import TrainingArguments
 import numpy as np
 import evaluate
 from transformers import Trainer
-from mini_lora import lorafy, count_params, count_trainable_params
+from mini_lora import count_params, count_trainable_params, lorafy, verafy
+
+
+fns = {
+    'LoRA': lorafy,
+    'VeRA': verafy
+}
+
+name = 'VeRA'
+
+fn = fns[name]
 
 dataset = load_dataset("yelp_review_full")
 
@@ -28,7 +38,7 @@ model = AutoModelForSequenceClassification.from_pretrained(
 )
 
 # only lorafy query and value weights, so lamdba x: "query" in x.name or "value" in x.name
-model = lorafy(model, r=1, should_lorafy=lambda mod, name: "query" in name or "value" in name, should_freeze=lambda x, name: "classifier" not in name)
+model = fn(model, r=1, should_apply=lambda mod, name: "query" in name or "value" in name, should_freeze=lambda x, name: "classifier" not in name)
 params, trainable_params = count_params(model), count_trainable_params(model)
 print(f"Total parameters: {params}, Trainable parameters: {trainable_params}")
 print("Percentage of trainable parameters: ", trainable_params / params * 100, "%")
@@ -42,8 +52,8 @@ def compute_metrics(eval_pred):
 
 
 training_args = TrainingArguments(
-    output_dir="test_trainer", evaluation_strategy="epoch", num_train_epochs=3, per_device_train_batch_size=4, per_device_eval_batch_size=4
-)
+    output_dir="test_trainer", evaluation_strategy="epoch", num_train_epochs=3, per_device_train_batch_size=4, per_device_eval_batch_size=4)
+
 trainer = Trainer(
     model=model,
     args=training_args,
